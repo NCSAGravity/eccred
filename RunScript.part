@@ -1,0 +1,79 @@
+# This fragment can be added at the end of your RunScript to automate
+# eccentricity reduction using simfactory
+#
+# The fragment requires 2 pieces of user input:
+# * minimum evolution time before attempting to measure and correct
+#   eccentricity: ECC_TIME (defaults to 900 code units)
+# * the target eccentricity after which to stop reducing eccentricity:
+#   ECC_TARGET (defaults to 1e-3)
+#
+# These can be set using simfactory's --define option during create time, ie:
+#
+# sim create --define ECC_TIME 950 --define ECC_TARGET 5e-4 MyBBHSim_Ecc0
+#
+# The script fragment will append / updated a possible _EccN termnal part of
+# the simulation name each time another round of eccentricity reduction is
+# started. Thus the final eccentricity reduced set might be MyBBHSim_Ecc4 or
+# so.
+
+
+# TOOD clean this up
+if ! grep -qi '^[[:space:]]*reduce-eccentricity[[:space:]]*=[[:space:]]False[[:space:]]*$' @RUNDIR@/../SIMFACTORY/properties.ini ; then
+  ECC_TIME=@ECC_TIME@
+  ECC_TARGET=@ECC_TARGET@
+  # provide defaults for ECC_TIME and ECC_TARGET
+  if echo "$ECC_TIME" | grep -qF '@' ; then
+    ECC_TIME=900.
+  fi
+  if echo "$ECC_TARGET" | grep -qF '@' ; then
+    ECC_TARGET=1e-3
+  fi
+
+  SIMFACTORY=@SIMFACTORY@
+  # old version of simfactory (ET_2020_05 and older) do not provide
+  # SIMFACTORY in RunScript, so try to work around
+  if echo "$SIMFACTORY" | grep -qF '@' ; then
+    SIMFACTORY=@SOURCEDIR@/simfactory/bin/sim
+  fi
+
+  if awk -vecc_time=$ECC_TIME 'END{exit $2+0. > ecc_time+0. ? 0 : 1}' */puncturetracker-pt_loc..asc ; then
+    # ran long enough, do a round of ecc reduction
+    SIMULATION_NAME=@SIMULATION_NAME@
+
+    ECC_ROUND=${SIMULATION_NAME##*_Ecc}
+    NEW_ECC_ROUND=$(($ECC_ROUND + 1))
+
+    NEW_SIMULATION_NAME="${SIMULATION_NAME%_Ecc*}_Ecc$NEW_ECC_ROUND"
+
+    PARFILE=@PARFILE@
+
+    # in RunScript PARFILE is the result of a (possible) rpar script with @FOO@
+    # substituted, here we reconstruct the original unmodified @PARFILE@
+    # available in SubmitScript
+    ORIG_PARFILE="@RUNDIR@/../SIMFACTORY/par/$(basename $PARFILE)"
+    if [ -r ${ORIG_PARFILE%.par}.rpar ] ; then
+      ORIG_PARFILE=${ORIG_PARFILE%.par}.rpar
+    fi
+    ORIG_PARFILE_BASE=${ORIG_PARFILE%.*}
+    ORIG_PARFILE_EXT=${ORIG_PARFILE##*.}
+    NEW_RPARFILE="${ORIG_PARFILE_BASE%_Ecc*}_Ecc$NEW_ECC_ROUND.$ORIG_PARFILE_EXT"
+
+    # output directory location is a parameter file option, we only need
+    # puncturetracker so we just search for it assuming a typical output layout
+    OUTPUT_DIR="$(dirname $(ls @RUNDIR@/*/puncturetracker-pt_loc..asc | head -n1))"
+    OUTPUT_GLOB="${OUTPUT_DIR/output-[0-9][0-9][0-9][0-9]/output-[0-9][0-9][0-9][0-9]}"
+
+    rm -f $NEW_RPARFILE
+    @SOURCEDIR@/utils/EccRed.py --input-parfile $ORIG_PARFILE --output-parfile $NEW_RPARFILE -t $ECC_TARGET --tmax $ECC_TIME "$OUTPUT_GLOB"
+    if [ -r $NEW_RPARFILE ] ; then
+      cd @SOURCEDIR@
+      $SIMFACTORY create-submit --basedir=@BASEDIR@ --machine=@MACHINE@ --procs @PROCS@ --num-threads @NUM_THREADS@ --walltime @WALLTIME@ --parfile $NEW_RPARFILE $NEW_SIMULATION_NAME
+    else
+      echo "reduce-eccentricity = False" >>@RUNDIR@/../SIMFACTORY/properties.ini
+    fi
+  else
+    # queue another segment
+    cd @SOURCEDIR@
+    $SIMFACTORY submit --basedir=@BASEDIR@ --machine=@MACHINE@ @SIMULATION_NAME@
+  fi
+fi
