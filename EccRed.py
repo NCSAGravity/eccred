@@ -15,15 +15,18 @@ verbose = False
 def DatReader(output_glob):
   fileglob = os.path.join(output_glob, "puncturetracker-pt_loc..asc")
   # get columns to read
+  cols = dict()
   with open(glob.glob(fileglob)[0]) as fh:
     for line in fh:
        # CapretIOASCII files have a header like this:
        # column format: 1:it   2:time  3:data
        # data columns: 3:pt_loc_t[0] 4:pt_loc_t[1] ...
-      if line.startswith("# data columns:"):
-        cols = dict([col.split(":")[::-1] for col in line.split()[3:]])
+      if line.startswith("# data columns:") or line.startswith("# column format:"):
+        cols.update(dict([col.split(":")[::-1] for col in line.split()[3:]]))
+      if not line.startswith("#"):
         break
-  col_t = 1
+
+  col_t = int(cols["time"])-1
   col_x0 = int(cols["pt_loc_x[0]"])-1
   col_y0 = int(cols["pt_loc_y[0]"])-1
   col_z0 = int(cols["pt_loc_z[0]"])-1
