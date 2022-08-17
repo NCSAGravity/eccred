@@ -7713,7 +7713,7 @@ def myEstimateEccentricityReductionPN35D10DE(eta, chi_1, chi_2, intrad, int_Omeg
   MAXTime = tCoal0PN(eta=eta, total_mass=1., separation=D0)
 
   Omega_0 = m_omega_r35SPN(D0,q,chi_1,chi_2,1.) if m_omega_r35SPN(D0,q,chi_1,chi_2,1.) > 10e-6 else 0 #chop
-  omega_data = np.array([p for p in int_Omega if (p[0]>=MinTime) and (p[0]<=MaxTime)])
+  omega_data = int_Omega[(int_Omega[:,0]>=MinTime)*(int_Omega[:,0]<=MaxTime)]
 
   s1z = chi_1[2]
   s2z = chi_2[2]
